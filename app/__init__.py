@@ -1,0 +1,1 @@
+"""RFQ email ingestion service."""
