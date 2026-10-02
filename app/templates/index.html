@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RFQ inbox</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1c1915;
+      --muted: #5e584f;
+      --line: #e4ddd2;
+      --paper: #f7f4ee;
+      --card: #fffdf9;
+      --warn: #8a4b12;
+      --warn-bg: #f8ead7;
+      --ok: #1f6b45;
+      --skip: #6b4c2a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Iowan Old Style", Palatino, "Palatino Linotype", Georgia, serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    header, main { max-width: 980px; margin: 0 auto; padding: 28px 20px; }
+    header { padding-bottom: 0; }
+    h1 { font-size: 1.8rem; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.02em; }
+    p.lede { margin: 0; color: var(--muted); font-family: "Avenir Next", "Segoe UI", sans-serif; }
+    form, table, .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+    form { padding: 16px; margin: 22px 0; display: grid; gap: 12px; }
+    label { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.85rem; font-weight: 600; }
+    textarea, input[type="file"] { width: 100%; font: 0.95rem/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; }
+    textarea { min-height: 140px; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    button {
+      justify-self: start;
+      background: var(--ink);
+      color: #fff;
+      border: 0;
+      border-radius: 999px;
+      padding: 8px 16px;
+      font-family: "Avenir Next", "Segoe UI", sans-serif;
+      font-size: 0.92rem;
+      cursor: pointer;
+    }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+    td a { color: inherit; }
+    .tag { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.75rem; font-weight: 650; }
+    .tag.rfq { color: var(--ok); }
+    .tag.skip { color: var(--skip); }
+    .empty { color: var(--muted); padding: 8px 0 20px; }
+    .warn { background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 8px; margin: 0 0 8px; }
+    dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; }
+    dt { color: var(--muted); font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.85rem; }
+    dd { margin: 0; }
+    .stack { display: grid; gap: 16px; }
+    pre {
+      white-space: pre-wrap;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 12px;
+      font-size: 0.82rem;
+    }
+    a.back { font-family: "Avenir Next", "Segoe UI", sans-serif; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>RFQ inbox</h1>
+    <p class="lede">What came in. Skipped mail stays in the list so an operator can see why it was not a quote.</p>
+  </header>
+  <main>
+    <form action="/ingest" method="post" enctype="multipart/form-data">
+      <div>
+        <label for="email">Upload an .eml file</label>
+        <input id="email" name="email" type="file" accept=".eml,message/rfc822,text/plain">
+      </div>
+      <div>
+        <label for="raw">Or paste the raw message</label>
+        <textarea id="raw" name="raw" placeholder="From: ..."></textarea>
+      </div>
+      <button type="submit">Ingest</button>
+    </form>
+    {% if records %}
+    <table>
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>From</th>
+          <th>Subject</th>
+          <th>Result</th>
+          <th>Confidence</th>
+          <th>Warnings</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for record in records %}
+        <tr>
+          <td>{{ record.ingested_at.strftime("%H:%M") }}</td>
+          <td>{{ record.sender }}</td>
+          <td><a href="/rfqs/{{ record.id }}">{{ record.subject }}</a></td>
+          <td>
+            {% if record.contract.isRfq %}
+            <span class="tag rfq">RFQ · {{ record.contract.lineItems|length }} lines</span>
+            {% else %}
+            <span class="tag skip">Not an RFQ</span>
+            {% endif %}
+          </td>
+          <td>{{ "%.2f"|format(record.contract.confidence) }}</td>
+          <td>{{ record.warning_count }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">Nothing ingested yet.</p>
+    {% endif %}
+  </main>
+</body>
+</html>
