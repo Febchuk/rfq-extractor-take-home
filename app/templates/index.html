@@ -55,6 +55,7 @@
     .tag { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.75rem; font-weight: 650; }
     .tag.rfq { color: var(--ok); }
     .tag.skip { color: var(--skip); }
+    .axes { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.8rem; color: var(--skip); }
     .empty { color: var(--muted); padding: 8px 0 20px; }
     .warn { background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 8px; margin: 0 0 8px; }
     dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 12px; margin: 0; }
@@ -97,6 +98,7 @@
           <th>From</th>
           <th>Subject</th>
           <th>Result</th>
+          <th>Signals</th>
           <th>Confidence</th>
           <th>Warnings</th>
         </tr>
@@ -112,6 +114,11 @@
             <span class="tag rfq">RFQ · {{ record.contract.lineItems|length }} lines</span>
             {% else %}
             <span class="tag skip">Not an RFQ</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if record.axes_diverge %}
+            <span class="axes">Parts list {{ "%.2f"|format(record.has_parts_probability) }} · Quote {{ "%.2f"|format(record.quote_probability) }}</span>
             {% endif %}
           </td>
           <td>{{ "%.2f"|format(record.contract.confidence) }}</td>

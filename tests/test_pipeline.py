@@ -6,7 +6,7 @@ from app.classify import Classification
 from app.extract import Extraction
 from app.main import app
 from app.pipeline import run
-from app.schema import LineItem
+from app.schema import Customer, LineItem, NotRfqContract, RequestInfo, RfqContract
 from app.store import store
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -165,6 +165,60 @@ def test_ambiguous_part_asks_jev_and_is_not_dropped():
     assert classifier.verify_calls == 1
     assert outcome.contract.lineItems[0].partNumber == "USB connector"
     assert any("partly supported" in warning or "split" in warning for warning in outcome.contract.warnings)
+
+
+def test_inbox_shows_both_probabilities_only_when_they_disagree():
+    store.clear()
+    store.add(
+        subject="Agreeing quote",
+        sender="buyer@example.com",
+        contract=RfqContract(
+            confidence=0.9,
+            customer=Customer(name="Ada"),
+            request=RequestInfo(),
+            lineItems=[LineItem(partNumber="LM358N", quantity=10)],
+            warnings=[],
+        ),
+        quote_probability=0.91,
+        has_parts_probability=0.88,
+    )
+    store.add(
+        subject="Parts without a quote",
+        sender="news@example.com",
+        contract=NotRfqContract(
+            confidence=0.95,
+            reason="Newsletter or product announcement, not a request for quotation",
+        ),
+        quote_probability=0.08,
+        has_parts_probability=0.91,
+    )
+    page = TestClient(app).get("/")
+    assert "Parts list 0.91" in page.text
+    assert "Quote 0.08" in page.text
+    assert "Parts list 0.88" not in page.text
+    assert "Quote 0.91" not in page.text
+    store.clear()
+
+
+def test_catalog_sidecar_leaves_the_contract_fields_alone():
+    extractor = FakeExtractor(
+        [
+            LineItem(partNumber="LM358N", manufacturer="TI", quantity=500),
+            LineItem(partNumber="10K 0805", quantity=5000),
+        ]
+    )
+    outcome = run(
+        _sample("rfq-01-bullet.eml"),
+        classifier=FakeClassifier(confidence=0.9),
+        extractor=extractor,
+    )
+    contract = outcome.contract
+    assert contract.lineItems[0].partNumber == "LM358N"
+    assert contract.lineItems[0].manufacturer == "TI"
+    assert contract.lineItems[1].partNumber == "10K 0805"
+    assert outcome.catalog_matches[0].kind == "exact"
+    assert outcome.catalog_matches[1].candidates[0].mpn == "RC0805FR-0710KL"
+    assert "catalog" not in contract.model_dump()
 
 
 def test_missing_key_on_the_form_is_an_error_page(monkeypatch):

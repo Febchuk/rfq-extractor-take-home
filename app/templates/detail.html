@@ -35,6 +35,7 @@
     th, td { text-align: left; padding: 8px 8px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
     th { font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.75rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
     .warn { background: var(--warn-bg); color: var(--warn); padding: 8px 10px; border-radius: 8px; margin: 0 0 8px; }
+    .sidecar { color: var(--muted); font-family: "Avenir Next", "Segoe UI", sans-serif; font-size: 0.85rem; }
     pre { white-space: pre-wrap; margin: 0; font-size: 0.8rem; }
   </style>
 </head>
@@ -86,6 +87,15 @@
             <td>{% if item.targetPrice is not none %}{{ item.targetPrice }}{% else %}—{% endif %}</td>
             <td>{{ item.notes or "—" }}</td>
           </tr>
+          <tr>
+            <td class="sidecar" colspan="5">
+              {% if record.catalog_matches|length > loop.index0 and record.catalog_matches[loop.index0].summary %}
+              {{ record.catalog_matches[loop.index0].summary }}
+              {% else %}
+              —
+              {% endif %}
+            </td>
+          </tr>
           {% endfor %}
         </tbody>
       </table>
@@ -109,6 +119,10 @@
       <dl>
         <dt>Reason</dt><dd>{{ contract.reason }}</dd>
         <dt>Confidence</dt><dd>{{ "%.2f"|format(contract.confidence) }}</dd>
+        {% if record.axes_diverge %}
+        <dt>Parts list</dt><dd>{{ "%.2f"|format(record.has_parts_probability) }}</dd>
+        <dt>Quote</dt><dd>{{ "%.2f"|format(record.quote_probability) }}</dd>
+        {% endif %}
       </dl>
     </section>
     {% endif %}

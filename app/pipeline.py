@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from app.catalog import LineCatalog, annotate
 from app.classify import INJECTION_THRESHOLD, Classification, JevClient, reason_for
 from app.extract import Extraction, GeminiExtractor, model_name
 from app.parse_email import ParsedEmail, find_phone, guess_company, parse_email
@@ -26,6 +27,9 @@ class Outcome:
     contract: RfqContract | NotRfqContract
     subject: str
     sender: str
+    quote_probability: float = 0.0
+    has_parts_probability: float = 0.0
+    catalog_matches: list[LineCatalog] = field(default_factory=list)
 
 
 def run(
@@ -46,11 +50,22 @@ def run(
             ),
             subject=parsed.subject,
             sender=parsed.sender_display,
+            quote_probability=classification.quote_probability,
+            has_parts_probability=classification.has_parts_probability,
         )
 
     extraction = _extract(parsed, extractor, escalation=False)
-    contract = _assemble(parsed, classification, extraction, classifier, escalated=False, extractor=extractor)
-    return Outcome(contract=contract, subject=parsed.subject, sender=parsed.sender_display)
+    contract, matches = _assemble(
+        parsed, classification, extraction, classifier, escalated=False, extractor=extractor
+    )
+    return Outcome(
+        contract=contract,
+        subject=parsed.subject,
+        sender=parsed.sender_display,
+        quote_probability=classification.quote_probability,
+        has_parts_probability=classification.has_parts_probability,
+        catalog_matches=matches,
+    )
 
 
 def _extract(parsed: ParsedEmail, extractor: GeminiExtractor, *, escalation: bool) -> Extraction:
@@ -81,7 +96,7 @@ def _assemble(
     *,
     escalated: bool,
     extractor: GeminiExtractor,
-) -> RfqContract:
+) -> tuple[RfqContract, list[LineCatalog]]:
     items, due, instructions, notes = apply_policies(
         extraction.line_items,
         parsed.grounding_source(extraction.transcription),
@@ -141,6 +156,8 @@ def _assemble(
                     )
                 )
 
+    catalog_matches, catalog_notes = annotate(items)
+    notes.extend(catalog_notes)
     header_notes = _header_notes(parsed, classification)
     all_notes = header_notes + notes
     if not items:
@@ -150,7 +167,7 @@ def _assemble(
     if not company:
         company = extraction.company
 
-    return RfqContract(
+    contract = RfqContract(
         confidence=apply_confidence(classification.route_confidence, all_notes),
         customer=Customer(
             name=parsed.from_name,
@@ -166,6 +183,7 @@ def _assemble(
         lineItems=items,
         warnings=[note.text for note in all_notes],
     )
+    return contract, catalog_matches
 
 
 def _ground_notes(items: list[LineItem], source: str, notes: list[Note]) -> list[Note]:

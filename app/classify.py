@@ -39,6 +39,8 @@ class Classification:
     injection_probability: float
     priority: str
     priority_confidence: float
+    quote_probability: float = 0.0
+    has_parts_probability: float = 0.0
 
     @property
     def is_rfq(self) -> bool:
@@ -96,11 +98,22 @@ class JevClient:
                     ),
                     criteria=_PRIORITY_CRITERIA,
                 ),
+                "has_parts": Noul(
+                    instructions=(
+                        "Using only `commercial_email`, does this message contain "
+                        "specific parts together with quantities or prices?"
+                    ),
+                    criteria={
+                        "true": "It names one or more parts and a quantity or a price.",
+                        "false": "It does not contain a parts list.",
+                    },
+                ),
             },
         )
         route = response.choices["route"]
         injection = response.nouls["injection"]
         priority = response.scores["priority"]
+        parts = response.nouls["has_parts"]
         label = route.choice if route.choice in {"rfq", *_REASONS} else "rfq"
         return Classification(
             route=label,
@@ -108,6 +121,8 @@ class JevClient:
             injection_probability=float(injection.noul),
             priority=_priority_label(float(priority.score), float(priority.confidence)),
             priority_confidence=float(priority.confidence),
+            quote_probability=float(route.probabilities.get("rfq", 0.0)),
+            has_parts_probability=float(parts.noul),
         )
 
     def verify_parts(self, source: str, parts: list[tuple[int, str]]) -> dict[int, float]:

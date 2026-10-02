@@ -41,11 +41,50 @@ Set only `GEMINI_API_KEY`. If `GOOGLE_API_KEY` is also set, the Gemini SDK uses 
 ## What it does
 
 ```
-parse MIME → quarantine override text → Jev route / injection / priority
-  → skip, or CSV rows, or Gemini text, or Gemini on the PNG
-  → code fixes quantities and dates → exact grounding
-  → Jev on ambiguous parts → one Pro retry if a part is missing
-  → contract
+raw .eml
+   |
+   v
+parse MIME                         body, CSV, PDF text, PNG bytes
+   |
+   v
+quarantine override banners
+   |                                      |
+   | commercial copy                      | raw copy
+   v                                      v
+Jev, one call
+   route Choice          P(rfq) from the choice's probability map
+   injection Noul        raw copy only; a high score warns, it does not reroute
+   priority Score
+   has_parts Noul        specific parts with a quantity or a price
+   |
+   +-- not an RFQ -----> templated reason
+   |                     if one of P(rfq) and has_parts is >= 0.5
+   |                     and the other is below 0.5, the inbox row shows both
+   |
+   +-- RFQ
+         |
+         +-- CSV, no PDF --> line items parsed in code
+         +-- PNG ----------> Gemini Flash, thinking medium
+         +-- prose or PDF -> Gemini Flash, thinking low
+         |
+         v
+      quantity and date policy
+         |
+         v
+      grounding
+         exact substring against body, CSV, PDF, or the image transcription
+         ambiguous part --> Jev verify Noul
+         absent part, and the extract was generative --> one Pro retry, then keep the line
+         |
+         v
+      catalog sidecar              does not rewrite partNumber or manufacturer
+         exact MPN row
+         package stem: list the packages, choose none
+         description overlap: suggestion only
+         TI / ON Semi / ST noted as aliases
+         |
+         v
+      JSON contract + inbox record
 ```
 
 This is the [custom logic pattern](https://docs.cloud.google.com/wiki/choose-design-pattern-agentic-ai-system): the steps are known, so a model does not choose the next step. A new attachment type is a code change.
@@ -54,7 +93,7 @@ This is the [custom logic pattern](https://docs.cloud.google.com/wiki/choose-des
 
 **Orchestration is custom logic, not a model.** A ReAct loop or a generative coordinator would adapt to a new attachment without a code change. They also add latency, an untested tool loop, and a place for the injected instructions in `rfq-07-restock.eml` to steer the workflow.
 
-**Jev classifies and verifies. Gemini Flash extracts.** One Jev call returns the route, an injection probability, and a priority score, so newsletters and order confirmations never hit Gemini. Jev cannot emit an open parts list or read pixels, so prose, PDF text, and the PNG go to `gemini-3.8-flash`. The same Flash model reads the scan. A separate vision model would be a third vendor for one PNG. `gemini-3.1-pro-preview` runs only when grounding says a part number is not in the source. That Pro id is still a preview. Text extraction uses thinking `low`. The scan, and the Pro retry, use thinking `medium`.
+**Jev classifies and verifies. Gemini Flash extracts.** One Jev call returns the route, an injection probability, a priority score, and whether the message lists parts, so newsletters and order confirmations never hit Gemini. Jev cannot emit an open parts list or read pixels, so prose, PDF text, and the PNG go to `gemini-3.8-flash`. The same Flash model reads the scan. A separate vision model would be a third vendor for one PNG. `gemini-3.1-pro-preview` runs only when grounding says a part number is not in the source. That Pro id is still a preview. Text extraction uses thinking `low`. The scan, and the Pro retry, use thinking `medium`.
 
 **Non-RFQ reasons are templates.** The route choice maps to a fixed sentence. The skip path makes no generative call. The sentence will not match `labels.json` word for word. If route confidence is below 0.5 the email is still not extracted, and the reason says so.
 
@@ -70,7 +109,9 @@ This is the [custom logic pattern](https://docs.cloud.google.com/wiki/choose-des
 
 **Priority comes from Jev.** The score levels are: no time pressure, a normal quote, rush or a firm near date, and a stopped line or same-day emergency. "Rush delivery" is the third level, `high`. If that score's confidence is below 0.5, the stored priority is `medium`. Asking Gemini for priority as well would repeat a closed-set judgment.
 
-**Catalog aliases stay as written.** `TI` stays `TI`. `10K 0805` stays `10K 0805`. Rewriting them to `samples/parts-catalog.csv` would disagree with the labeled answers.
+**The catalog is a sidecar.** An exact MPN such as `LM358N` shows that catalog row. A package stem such as `LM358` lists `LM358N`, `LM358D`, and `LM358AN` and picks none, with a warning that the package was not guessed. Description overlap, such as `10K 0805` against `RC0805FR-0710KL`, is shown as a suggestion and is not copied into `partNumber`. `TI`, `ON Semi`, and `ST` are noted in the sidecar as aliases of Texas Instruments, ON Semiconductor, and STMicroelectronics. The contract fields stay as written, so they still match the labeled answers. A descriptive line with no part-number shape, such as `Relay 5V 10A SPDT`, gets no catalog warning.
+
+**Two probabilities explain a skip.** `P(rfq)` is the route choice's probability for `rfq`, not the confidence of whichever label won. `has_parts` is a separate question: does the commercial email name specific parts with quantities or prices? The inbox shows both only when one is at least 0.5 and the other is below 0.5. A newsletter and an order confirmation can list parts without asking for a quote. An RFQ whose two scores agree does not get that extra cell. The skip sentence stays a template.
 
 **Confidence is a formula.** Start from Jev's route confidence. Subtract `0.05` for each warning about a line item, quantity, date, or equivalent. Do not subtract for the injection warning or the low route-confidence warning. Clamp to 0–1 and round to two decimals. A model's own probability would read as more precise than this pipeline is.
 
@@ -80,7 +121,6 @@ This is the [custom logic pattern](https://docs.cloud.google.com/wiki/choose-des
 
 ## With more time
 
-- Resolve part numbers and manufacturer aliases against `samples/parts-catalog.csv`, beside the contract, without rewriting the labeled fields.
 - OCR the scan with a second tool so image grounding is not the same model checking itself.
 - Hold the ERP create until a person clears warnings.
 - Replace the banner filter with a real injection sandbox.

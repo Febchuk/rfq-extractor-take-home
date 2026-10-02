@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from threading import Lock
 from uuid import uuid4
 
+from app.catalog import LineCatalog
 from app.schema import Contract
 
 
@@ -18,11 +19,20 @@ class Record:
     ingested_at: datetime
     contract: Contract
     source_name: str | None = None
+    quote_probability: float = 0.0
+    has_parts_probability: float = 0.0
+    catalog_matches: list[LineCatalog] = field(default_factory=list)
 
     @property
     def warning_count(self) -> int:
         warnings = getattr(self.contract, "warnings", None)
         return len(warnings or [])
+
+    @property
+    def axes_diverge(self) -> bool:
+        asks = self.quote_probability >= 0.5
+        lists_parts = self.has_parts_probability >= 0.5
+        return asks != lists_parts
 
 
 class Store:
@@ -37,6 +47,9 @@ class Store:
         sender: str,
         contract: Contract,
         source_name: str | None = None,
+        quote_probability: float = 0.0,
+        has_parts_probability: float = 0.0,
+        catalog_matches: list[LineCatalog] | None = None,
     ) -> Record:
         record = Record(
             id=uuid4().hex[:12],
@@ -45,6 +58,9 @@ class Store:
             ingested_at=datetime.now(timezone.utc),
             contract=contract,
             source_name=source_name,
+            quote_probability=quote_probability,
+            has_parts_probability=has_parts_probability,
+            catalog_matches=list(catalog_matches or []),
         )
         with self._lock:
             self._records.insert(0, record)

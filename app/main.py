@@ -87,6 +87,9 @@ async def ingest(request: Request):
         sender=outcome.sender,
         contract=outcome.contract,
         source_name=source_name,
+        quote_probability=outcome.quote_probability,
+        has_parts_probability=outcome.has_parts_probability,
+        catalog_matches=outcome.catalog_matches,
     )
     if wants_html:
         return RedirectResponse(url=f"/rfqs/{record.id}", status_code=303)
